@@ -9,5 +9,6 @@
 
 mod error;
 mod kdf;
+pub mod recovery;
 
 pub use error::{FilerCryptoError, Result};
