@@ -14,7 +14,7 @@ Most day-to-day work in this repo does NOT require reading the parent Filer DESI
 
 4. **Constant-time comparisons for secrets.** When comparing MAC tags, signatures, or any key-derived bytes, never use `==` — use `subtle::ConstantTimeEq` (the `subtle` crate is intentionally removed from deps until a path actually needs it; re-add then). AEAD tag verification is constant-time inside `aes-gcm`, so we rely on the AEAD API rather than manual tag comparison.
 
-5. **No `panic!`/`unwrap()`/`expect()` on external input.** Functions exposed at the FFI boundary (`filer-crypto-uniffi` and the `pub` surface of `filer-crypto`) must return `Result<_, FilerCryptoError>` on bad input. Internal helpers may unwrap when the invariant is provable from the immediate caller. Randomness failures are propagated as `FilerCryptoError::Randomness` via `OsRng.try_fill_bytes`, not as panics. The one exception: the UDL `generate_master_secret()` is non-throwing because OS CSPRNG failure on iOS is a system fault with no recovery path; the wrapper `.expect`s.
+5. **No `panic!`/`unwrap()`/`expect()` on external input.** Functions exposed at the FFI boundary (`filer-crypto-uniffi` and the `pub` surface of `filer-crypto`) must return `Result<_, FilerCryptoError>` on bad input. Internal helpers may unwrap when the invariant is provable from the immediate caller. Randomness failures are propagated as `FilerCryptoError::Randomness` via `OsRng.try_fill_bytes`, not as panics — this applies all the way through the FFI: `generate_master_secret` in the UDL is `[Throws=FilerCryptoError]` and Swift callers must handle the throw.
 
 6. **MIT-compatible deps only.** The crate is MIT. New deps must be MIT, Apache-2.0, BSD, or compatible. No GPL.
 
