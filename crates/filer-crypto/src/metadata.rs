@@ -20,7 +20,9 @@ pub struct EncryptedField {
 pub(crate) fn encrypt_field(plaintext: &[u8], key: &[u8; 32]) -> Result<EncryptedField> {
     let cipher = Aes256Gcm::new(key.into());
     let mut iv = [0u8; 12];
-    OsRng.fill_bytes(&mut iv);
+    OsRng
+        .try_fill_bytes(&mut iv)
+        .map_err(|_| FilerCryptoError::Randomness)?;
     let ciphertext = cipher
         .encrypt(&iv.into(), plaintext)
         .map_err(|_| FilerCryptoError::Decrypt)?;

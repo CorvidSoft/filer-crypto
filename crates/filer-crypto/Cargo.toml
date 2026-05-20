@@ -14,7 +14,6 @@ sha2 = { workspace = true }
 ed25519-dalek = { workspace = true }
 bip39 = { workspace = true }
 zeroize = { workspace = true }
-subtle = { workspace = true }
 rand_core = { workspace = true }
 getrandom = { workspace = true }
 thiserror = { workspace = true }

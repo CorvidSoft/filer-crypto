@@ -108,7 +108,7 @@ Methods:
 - `decrypt_blob(blob: &EncryptedBlob) -> Result<Vec<u8>>` — inverse
 - `encrypt_metadata_field(plaintext: &[u8]) -> Result<EncryptedField>` — same envelope, scoped to metadata key
 - `decrypt_metadata_field(field: &EncryptedField) -> Result<Vec<u8>>`
-- `sign_challenge(nonce: &[u8]) -> Result<Signature>` — Ed25519 over the nonce
+- `sign_challenge(nonce: &[u8]) -> DeviceSignature` — Ed25519 over the nonce (infallible given a valid signing key)
 - `device_public_key() -> [u8; 32]` — for backend registration
 
 `Vault` implements `Drop` with `zeroize` so all key material is wiped on close.

@@ -164,4 +164,26 @@ mod tests {
             Err(crate::FilerCryptoError::InvalidPhrase)
         ));
     }
+
+    #[test]
+    fn blob_from_one_vault_cannot_be_decrypted_by_different_vault() {
+        let secret_a = [42u8; 32];
+        let secret_b = [99u8; 32];
+        let vault_a = Vault::open(&secret_a).unwrap();
+        let vault_b = Vault::open(&secret_b).unwrap();
+
+        let blob = vault_a.encrypt_blob(b"secret data").unwrap();
+        let result = vault_b.decrypt_blob(&blob);
+        assert!(matches!(result, Err(crate::FilerCryptoError::Decrypt)));
+    }
+
+    #[test]
+    fn metadata_from_one_vault_cannot_be_decrypted_by_different_vault() {
+        let vault_a = Vault::open(&[42u8; 32]).unwrap();
+        let vault_b = Vault::open(&[99u8; 32]).unwrap();
+
+        let field = vault_a.encrypt_metadata_field(b"name").unwrap();
+        let result = vault_b.decrypt_metadata_field(&field);
+        assert!(matches!(result, Err(crate::FilerCryptoError::Decrypt)));
+    }
 }

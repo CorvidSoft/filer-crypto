@@ -12,10 +12,15 @@ use zeroize::Zeroize;
 use crate::error::{FilerCryptoError, Result};
 
 /// Generates a fresh 32-byte master secret from the system CSPRNG.
-pub fn generate_master_secret() -> [u8; 32] {
+///
+/// Returns `Err(FilerCryptoError::Randomness)` if the OS entropy source is
+/// unavailable (e.g. sandbox restrictions on iOS).
+pub fn generate_master_secret() -> Result<[u8; 32]> {
     let mut out = [0u8; 32];
-    OsRng.fill_bytes(&mut out);
-    out
+    OsRng
+        .try_fill_bytes(&mut out)
+        .map_err(|_| FilerCryptoError::Randomness)?;
+    Ok(out)
 }
 
 /// Encodes a 32-byte master secret as a 24-word BIP39 phrase (English).
@@ -76,14 +81,14 @@ mod tests {
 
     #[test]
     fn generate_master_secret_is_non_zero() {
-        let secret = generate_master_secret();
+        let secret = generate_master_secret().unwrap();
         assert_ne!(secret, [0u8; 32]);
     }
 
     #[test]
     fn generate_master_secret_is_random() {
-        let a = generate_master_secret();
-        let b = generate_master_secret();
+        let a = generate_master_secret().unwrap();
+        let b = generate_master_secret().unwrap();
         assert_ne!(a, b);
     }
 }

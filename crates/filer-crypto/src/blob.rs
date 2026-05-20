@@ -11,7 +11,7 @@
 
 use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead};
 use rand_core::{OsRng, RngCore};
-use zeroize::Zeroize;
+use zeroize::Zeroizing;
 
 use crate::error::{FilerCryptoError, Result};
 
@@ -30,20 +30,26 @@ pub(crate) fn encrypt_with_key_wrapping(
     wrapping_key: &[u8; 32],
 ) -> Result<EncryptedBlob> {
     // 1. Fresh random per-blob data key + IV
-    let mut data_key = [0u8; 32];
-    OsRng.fill_bytes(&mut data_key);
+    let mut data_key = Zeroizing::new([0u8; 32]);
+    OsRng
+        .try_fill_bytes(&mut data_key[..])
+        .map_err(|_| FilerCryptoError::Randomness)?;
     let mut iv = [0u8; 12];
-    OsRng.fill_bytes(&mut iv);
+    OsRng
+        .try_fill_bytes(&mut iv)
+        .map_err(|_| FilerCryptoError::Randomness)?;
 
     // 2. Encrypt plaintext with the data key
-    let cipher = Aes256Gcm::new(&data_key.into());
+    let cipher = Aes256Gcm::new((&*data_key).into());
     let ciphertext = cipher
         .encrypt(&iv.into(), plaintext)
         .map_err(|_| FilerCryptoError::Decrypt)?;
 
     // 3. Wrap the data key with the wrapping key (also AES-256-GCM)
     let mut wrap_iv = [0u8; 12];
-    OsRng.fill_bytes(&mut wrap_iv);
+    OsRng
+        .try_fill_bytes(&mut wrap_iv)
+        .map_err(|_| FilerCryptoError::Randomness)?;
     let wrapper = Aes256Gcm::new(wrapping_key.into());
     let wrapped_key_ct = wrapper
         .encrypt(&wrap_iv.into(), data_key.as_slice())
@@ -54,7 +60,7 @@ pub(crate) fn encrypt_with_key_wrapping(
     wrapped_key.extend_from_slice(&wrap_iv);
     wrapped_key.extend_from_slice(&wrapped_key_ct);
 
-    data_key.zeroize();
+    // data_key is zeroized on Drop via Zeroizing<[u8; 32]>
 
     Ok(EncryptedBlob {
         ciphertext,
@@ -76,26 +82,25 @@ pub(crate) fn decrypt_with_key_wrapping(
     wrap_iv.copy_from_slice(wrap_iv_bytes);
 
     let wrapper = Aes256Gcm::new(wrapping_key.into());
-    let mut data_key_vec = wrapper
-        .decrypt(&wrap_iv.into(), wrapped_ct)
-        .map_err(|_| FilerCryptoError::Decrypt)?;
+    let data_key_vec = Zeroizing::new(
+        wrapper
+            .decrypt(&wrap_iv.into(), wrapped_ct)
+            .map_err(|_| FilerCryptoError::Decrypt)?,
+    );
 
     if data_key_vec.len() != 32 {
-        data_key_vec.zeroize();
         return Err(FilerCryptoError::Decrypt);
     }
-    let mut data_key = [0u8; 32];
+    let mut data_key = Zeroizing::new([0u8; 32]);
     data_key.copy_from_slice(&data_key_vec);
-    data_key_vec.zeroize();
+    // data_key_vec is zeroized on Drop via Zeroizing<Vec<u8>>
 
     // Decrypt the payload
-    let cipher = Aes256Gcm::new(&data_key.into());
-    let plaintext = cipher
+    let cipher = Aes256Gcm::new((&*data_key).into());
+    cipher
         .decrypt(&blob.iv.into(), blob.ciphertext.as_slice())
-        .map_err(|_| FilerCryptoError::Decrypt);
-
-    data_key.zeroize();
-    plaintext
+        .map_err(|_| FilerCryptoError::Decrypt)
+    // data_key is zeroized on Drop via Zeroizing<[u8; 32]>
 }
 
 #[cfg(test)]
@@ -174,5 +179,25 @@ mod tests {
         blob.wrapped_key.truncate(5); // shorter than 12-byte IV
         let result = decrypt_with_key_wrapping(&blob, &key);
         assert!(matches!(result, Err(FilerCryptoError::Decrypt)));
+    }
+
+    #[test]
+    fn aes_gcm_nist_known_answer() {
+        // NIST SP 800-38D, AES-256-GCM, empty plaintext
+        // Key: 32 bytes of 0x00, IV: 12 bytes of 0x00, no AAD
+        // Expected output is just the 16-byte authentication tag.
+        let key = [0u8; 32];
+        let iv = [0u8; 12];
+        let cipher = Aes256Gcm::new(&key.into());
+        let ct = cipher.encrypt(&iv.into(), b"".as_ref()).unwrap();
+        // Empty plaintext means ct is just the 16-byte tag
+        assert_eq!(hex_to_vec("530f8afbc74536b9a963b4f1c4cb738b"), ct);
+    }
+
+    fn hex_to_vec(s: &str) -> Vec<u8> {
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+            .collect()
     }
 }
