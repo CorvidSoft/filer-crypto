@@ -5,4 +5,19 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "UniFFI bindings for filer-crypto (Swift/iOS)"
+description = "UniFFI bindings for filer-crypto"
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+name = "filer_crypto"
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+
+[dependencies]
+filer-crypto = { path = "../filer-crypto" }
+uniffi = { workspace = true, features = ["cli"] }
+
+[build-dependencies]
+uniffi = { workspace = true, features = ["build"] }
