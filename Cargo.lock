@@ -402,6 +402,7 @@ name = "filer-crypto-uniffi"
 version = "0.0.1"
 dependencies = [
  "filer-crypto",
+ "thiserror",
  "uniffi",
 ]
 
