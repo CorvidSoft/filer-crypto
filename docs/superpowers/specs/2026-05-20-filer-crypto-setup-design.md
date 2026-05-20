@@ -8,7 +8,7 @@
 
 Stand up the `filer-crypto` Rust crate so the Filer iOS app can consume it via Swift Package Manager. Produce a runnable, tested crate with the v1 primitives in place — blob encryption, metadata field encryption, key derivation, recovery phrase, device challenge signing — and a Swift Package wrapper that the mobile app's `with-crypto-core` config plugin can pick up at `expo prebuild` time.
 
-This spec covers **the crate's structure, public API shape, and Swift Package wiring only**. Implementation of each primitive is the next plan; this spec defines the boundaries.
+This spec covers **the crate's structure, public API shape, primitive implementations, and Swift Package wiring**. It is both the design contract for the API and the commitment to ship working primitives behind that API. Property tests, fuzzing, XCFramework distribution, and Android/Wasm bindings are explicitly out of scope (see §2 and §6).
 
 ## 2. Scope
 
@@ -160,7 +160,7 @@ All from the RustCrypto family except `bip39` and `ed25519-dalek`:
 - `ed25519-dalek` ^2.1 — device signing
 - `bip39` ^2.0 — recovery phrase
 - `zeroize` ^1.7 — secure memory wipe
-- `subtle` ^2.5 — constant-time comparison (used where appropriate)
+- `subtle` — constant-time comparison. Not declared as a direct dependency in v0.1.0 because no path currently requires it (the AEAD library handles tag verification in constant time internally). Re-add as a direct dependency when a code path needs to compare derived bytes manually (HMAC tags, custom signature schemes, etc.).
 - `rand_core` ^0.6 + `getrandom` ^0.2 — system random
 - `thiserror` ^2.0 — error macros
 - `uniffi` ^0.28 — bindings (binding crate only)

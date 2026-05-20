@@ -1,13 +1,19 @@
 //! AES-256-GCM blob encryption with per-blob random data keys.
 //!
-//! Each blob has:
-//!   - a fresh random 32-byte data key
-//!   - a fresh random 12-byte IV
-//!   - ciphertext = AES-256-GCM(data_key, iv, plaintext)
-//!   - wrapped_key = IV(12) || AES-256-GCM(wrapping_key, wrap_iv, data_key)
+//! Each blob carries TWO independent 12-byte IVs:
+//!   - `iv` (the EncryptedBlob.iv field) — used to encrypt the payload
+//!   - `wrap_iv` — used to encrypt the data key
 //!
-//! The wrapped_key field encodes its own 12-byte IV as the first 12 bytes,
-//! followed by the GCM ciphertext + tag (48 bytes for a 32-byte key).
+//! The wrap_iv is embedded as the first 12 bytes of `wrapped_key`; `iv` is
+//! a separate field on EncryptedBlob.
+//!
+//! Layout:
+//!   - `data_key`    = random 32 bytes
+//!   - `iv`          = random 12 bytes
+//!   - `wrap_iv`     = random 12 bytes
+//!   - `ciphertext`  = AES-256-GCM(`data_key`, `iv`, plaintext)
+//!   - `wrapped_key` = `wrap_iv` (12 bytes) followed by AES-256-GCM(`wrapping_key`,
+//!     `wrap_iv`, `data_key`) which is 48 bytes (32-byte key + 16-byte GCM tag)
 
 use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead};
 use rand_core::{OsRng, RngCore};
@@ -43,7 +49,7 @@ pub(crate) fn encrypt_with_key_wrapping(
     let cipher = Aes256Gcm::new((&*data_key).into());
     let ciphertext = cipher
         .encrypt(&iv.into(), plaintext)
-        .map_err(|_| FilerCryptoError::Decrypt)?;
+        .map_err(|_| FilerCryptoError::Aead)?;
 
     // 3. Wrap the data key with the wrapping key (also AES-256-GCM)
     let mut wrap_iv = [0u8; 12];
@@ -53,7 +59,7 @@ pub(crate) fn encrypt_with_key_wrapping(
     let wrapper = Aes256Gcm::new(wrapping_key.into());
     let wrapped_key_ct = wrapper
         .encrypt(&wrap_iv.into(), data_key.as_slice())
-        .map_err(|_| FilerCryptoError::Decrypt)?;
+        .map_err(|_| FilerCryptoError::Aead)?;
 
     // Wrapped key layout: iv (12 bytes) || ciphertext+tag
     let mut wrapped_key = Vec::with_capacity(12 + wrapped_key_ct.len());
@@ -74,7 +80,7 @@ pub(crate) fn decrypt_with_key_wrapping(
     wrapping_key: &[u8; 32],
 ) -> Result<Vec<u8>> {
     if blob.wrapped_key.len() < 12 {
-        return Err(FilerCryptoError::Decrypt);
+        return Err(FilerCryptoError::Aead);
     }
     // Unwrap the data key
     let (wrap_iv_bytes, wrapped_ct) = blob.wrapped_key.split_at(12);
@@ -85,11 +91,11 @@ pub(crate) fn decrypt_with_key_wrapping(
     let data_key_vec = Zeroizing::new(
         wrapper
             .decrypt(&wrap_iv.into(), wrapped_ct)
-            .map_err(|_| FilerCryptoError::Decrypt)?,
+            .map_err(|_| FilerCryptoError::Aead)?,
     );
 
     if data_key_vec.len() != 32 {
-        return Err(FilerCryptoError::Decrypt);
+        return Err(FilerCryptoError::Aead);
     }
     let mut data_key = Zeroizing::new([0u8; 32]);
     data_key.copy_from_slice(&data_key_vec);
@@ -99,7 +105,7 @@ pub(crate) fn decrypt_with_key_wrapping(
     let cipher = Aes256Gcm::new((&*data_key).into());
     cipher
         .decrypt(&blob.iv.into(), blob.ciphertext.as_slice())
-        .map_err(|_| FilerCryptoError::Decrypt)
+        .map_err(|_| FilerCryptoError::Aead)
     // data_key is zeroized on Drop via Zeroizing<[u8; 32]>
 }
 
@@ -139,7 +145,7 @@ mod tests {
         let key2 = [43u8; 32];
         let blob = encrypt_with_key_wrapping(b"data", &key1).unwrap();
         let result = decrypt_with_key_wrapping(&blob, &key2);
-        assert!(matches!(result, Err(FilerCryptoError::Decrypt)));
+        assert!(matches!(result, Err(FilerCryptoError::Aead)));
     }
 
     #[test]
@@ -148,7 +154,7 @@ mod tests {
         let mut blob = encrypt_with_key_wrapping(b"data", &key).unwrap();
         blob.ciphertext[0] ^= 1;
         let result = decrypt_with_key_wrapping(&blob, &key);
-        assert!(matches!(result, Err(FilerCryptoError::Decrypt)));
+        assert!(matches!(result, Err(FilerCryptoError::Aead)));
     }
 
     #[test]
@@ -157,7 +163,7 @@ mod tests {
         let mut blob = encrypt_with_key_wrapping(b"data", &key).unwrap();
         blob.wrapped_key[15] ^= 1; // flip a bit in the wrapped-key ciphertext
         let result = decrypt_with_key_wrapping(&blob, &key);
-        assert!(matches!(result, Err(FilerCryptoError::Decrypt)));
+        assert!(matches!(result, Err(FilerCryptoError::Aead)));
     }
 
     #[test]
@@ -178,7 +184,7 @@ mod tests {
         let mut blob = encrypt_with_key_wrapping(b"data", &key).unwrap();
         blob.wrapped_key.truncate(5); // shorter than 12-byte IV
         let result = decrypt_with_key_wrapping(&blob, &key);
-        assert!(matches!(result, Err(FilerCryptoError::Decrypt)));
+        assert!(matches!(result, Err(FilerCryptoError::Aead)));
     }
 
     #[test]

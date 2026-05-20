@@ -25,7 +25,7 @@ pub(crate) fn encrypt_field(plaintext: &[u8], key: &[u8; 32]) -> Result<Encrypte
         .map_err(|_| FilerCryptoError::Randomness)?;
     let ciphertext = cipher
         .encrypt(&iv.into(), plaintext)
-        .map_err(|_| FilerCryptoError::Decrypt)?;
+        .map_err(|_| FilerCryptoError::Aead)?;
     Ok(EncryptedField { ciphertext, iv })
 }
 
@@ -33,7 +33,7 @@ pub(crate) fn decrypt_field(field: &EncryptedField, key: &[u8; 32]) -> Result<Ve
     let cipher = Aes256Gcm::new(key.into());
     cipher
         .decrypt(&field.iv.into(), field.ciphertext.as_slice())
-        .map_err(|_| FilerCryptoError::Decrypt)
+        .map_err(|_| FilerCryptoError::Aead)
 }
 
 #[cfg(test)]
@@ -63,7 +63,7 @@ mod tests {
         let key2 = [8u8; 32];
         let field = encrypt_field(b"secret", &key1).unwrap();
         let result = decrypt_field(&field, &key2);
-        assert!(matches!(result, Err(FilerCryptoError::Decrypt)));
+        assert!(matches!(result, Err(FilerCryptoError::Aead)));
     }
 
     #[test]
@@ -72,7 +72,7 @@ mod tests {
         let mut field = encrypt_field(b"secret", &key).unwrap();
         field.ciphertext[0] ^= 1;
         let result = decrypt_field(&field, &key);
-        assert!(matches!(result, Err(FilerCryptoError::Decrypt)));
+        assert!(matches!(result, Err(FilerCryptoError::Aead)));
     }
 
     #[test]

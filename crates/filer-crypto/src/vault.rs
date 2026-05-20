@@ -6,11 +6,17 @@
 //! interact with `Vault` methods that operate on plaintext + the envelope
 //! types defined in [`crate::blob`] and [`crate::metadata`].
 //!
-//! The Vault implements `Drop` to zeroize all key material when it goes
-//! out of scope.
+//! Both subkey fields are wrapped in `Zeroizing<[u8; 32]>`, which means:
+//! - they are not `Copy` (so moving them into `Self` doesn't leave duplicate
+//!   stack copies of the bytes), and
+//! - they zeroize on `Drop` automatically, including on any `?` return from
+//!   constructors. No manual `Drop` impl is needed for them.
+//!
+//! `SigningKey` owns its zeroization via the `zeroize` feature of
+//! `ed25519-dalek`.
 
 use ed25519_dalek::SigningKey;
-use zeroize::Zeroize;
+use zeroize::Zeroizing;
 
 use crate::auth::{self, DeviceSignature};
 use crate::blob::{self, EncryptedBlob};
@@ -20,24 +26,26 @@ use crate::metadata::{self, EncryptedField};
 use crate::recovery;
 
 pub struct Vault {
-    wrap_key: [u8; 32],
-    metadata_key: [u8; 32],
+    wrap_key: Zeroizing<[u8; 32]>,
+    metadata_key: Zeroizing<[u8; 32]>,
     signing_key: SigningKey,
 }
 
 impl Vault {
     /// Open a Vault from a 32-byte master secret.
     pub fn open(master_secret: &[u8; 32]) -> Result<Self> {
-        let mut wrap_key = [0u8; 32];
-        kdf::derive_subkey(master_secret, WRAP_CTX, &mut wrap_key)?;
+        // All intermediates are wrapped in Zeroizing from the start so they
+        // wipe on any early `?` return.
+        let mut wrap_key = Zeroizing::new([0u8; 32]);
+        kdf::derive_subkey(master_secret, WRAP_CTX, &mut *wrap_key)?;
 
-        let mut metadata_key = [0u8; 32];
-        kdf::derive_subkey(master_secret, METADATA_CTX, &mut metadata_key)?;
+        let mut metadata_key = Zeroizing::new([0u8; 32]);
+        kdf::derive_subkey(master_secret, METADATA_CTX, &mut *metadata_key)?;
 
-        let mut sign_seed = [0u8; 32];
-        kdf::derive_subkey(master_secret, SIGN_CTX, &mut sign_seed)?;
+        let mut sign_seed = Zeroizing::new([0u8; 32]);
+        kdf::derive_subkey(master_secret, SIGN_CTX, &mut *sign_seed)?;
         let signing_key = auth::signing_key_from_seed(&sign_seed);
-        sign_seed.zeroize();
+        // sign_seed zeroizes on drop at end of scope.
 
         Ok(Self {
             wrap_key,
@@ -48,10 +56,8 @@ impl Vault {
 
     /// Open a Vault from a 24-word BIP39 recovery phrase.
     pub fn from_recovery_phrase(phrase: &str) -> Result<Self> {
-        let mut secret = recovery::phrase_to_secret(phrase)?;
-        let result = Self::open(&secret);
-        secret.zeroize();
-        result
+        let secret = Zeroizing::new(recovery::phrase_to_secret(phrase)?);
+        Self::open(&secret)
     }
 
     pub fn encrypt_blob(&self, plaintext: &[u8]) -> Result<EncryptedBlob> {
@@ -76,14 +82,6 @@ impl Vault {
 
     pub fn device_public_key(&self) -> [u8; 32] {
         auth::public_key_bytes(&self.signing_key)
-    }
-}
-
-impl Drop for Vault {
-    fn drop(&mut self) {
-        self.wrap_key.zeroize();
-        self.metadata_key.zeroize();
-        // SigningKey owns its zeroization per ed25519-dalek's zeroize feature.
     }
 }
 
@@ -174,7 +172,7 @@ mod tests {
 
         let blob = vault_a.encrypt_blob(b"secret data").unwrap();
         let result = vault_b.decrypt_blob(&blob);
-        assert!(matches!(result, Err(crate::FilerCryptoError::Decrypt)));
+        assert!(matches!(result, Err(crate::FilerCryptoError::Aead)));
     }
 
     #[test]
@@ -184,6 +182,6 @@ mod tests {
 
         let field = vault_a.encrypt_metadata_field(b"name").unwrap();
         let result = vault_b.decrypt_metadata_field(&field);
-        assert!(matches!(result, Err(crate::FilerCryptoError::Decrypt)));
+        assert!(matches!(result, Err(crate::FilerCryptoError::Aead)));
     }
 }

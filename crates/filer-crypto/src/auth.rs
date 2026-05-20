@@ -10,9 +10,21 @@ use ed25519_dalek::{Signature, Signer, SigningKey};
 use crate::error::{FilerCryptoError, Result};
 
 /// An Ed25519 signature produced by [`Vault::sign_challenge`].
-#[derive(Debug, Clone)]
+///
+/// `Debug` is implemented manually to redact the raw signature bytes — signatures
+/// are sensitive cryptographic material and must never appear in logs or panic
+/// messages.
+#[derive(Clone)]
 pub struct DeviceSignature {
     pub bytes: [u8; 64],
+}
+
+impl core::fmt::Debug for DeviceSignature {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("DeviceSignature")
+            .field("bytes", &"<redacted>")
+            .finish()
+    }
 }
 
 pub(crate) fn signing_key_from_seed(seed: &[u8; 32]) -> SigningKey {

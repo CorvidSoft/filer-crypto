@@ -117,7 +117,7 @@ crates/*/target/
 
 - [ ] **Step 3: Verify Cargo accepts the workspace**
 
-Run: `cd /Users/corvid/Projects/filer-crypto && cargo metadata --format-version 1 --no-deps`
+Run: `cargo metadata --format-version 1 --no-deps`
 Expected: exits 0 with JSON output listing both workspace members (the member crates don't exist yet, so expect a warning or partial output — verify it doesn't crash).
 
 If `cargo metadata` errors because the member crates don't exist yet, that's expected; we'll have a valid workspace after Task 2.
@@ -209,7 +209,7 @@ pub use error::{FilerCryptoError, Result};
 
 - [ ] **Step 4: Verify the crate builds**
 
-Run: `cd /Users/corvid/Projects/filer-crypto && cargo build -p filer-crypto`
+Run: `cargo build -p filer-crypto`
 Expected: exit 0, downloads + compiles dependencies, no warnings.
 
 - [ ] **Step 5: Verify tests run (no tests yet — should be zero-pass)**
@@ -555,7 +555,7 @@ pub(crate) fn encrypt_with_key_wrapping(
     let cipher = Aes256Gcm::new(&data_key.into());
     let ciphertext = cipher
         .encrypt(&iv.into(), plaintext)
-        .map_err(|_| FilerCryptoError::Decrypt)?;
+        .map_err(|_| FilerCryptoError::Aead)?;
 
     // 3. Wrap the data key with the wrapping key (also AES-256-GCM)
     let mut wrap_iv = [0u8; 12];
@@ -563,7 +563,7 @@ pub(crate) fn encrypt_with_key_wrapping(
     let wrapper = Aes256Gcm::new(wrapping_key.into());
     let wrapped_key_ct = wrapper
         .encrypt(&wrap_iv.into(), data_key.as_slice())
-        .map_err(|_| FilerCryptoError::Decrypt)?;
+        .map_err(|_| FilerCryptoError::Aead)?;
 
     // Wrapped key layout: iv (12 bytes) || ciphertext+tag
     let mut wrapped_key = Vec::with_capacity(12 + wrapped_key_ct.len());
@@ -584,7 +584,7 @@ pub(crate) fn decrypt_with_key_wrapping(
     wrapping_key: &[u8; 32],
 ) -> Result<Vec<u8>> {
     if blob.wrapped_key.len() < 12 {
-        return Err(FilerCryptoError::Decrypt);
+        return Err(FilerCryptoError::Aead);
     }
     // Unwrap the data key
     let (wrap_iv_bytes, wrapped_ct) = blob.wrapped_key.split_at(12);
@@ -594,11 +594,11 @@ pub(crate) fn decrypt_with_key_wrapping(
     let wrapper = Aes256Gcm::new(wrapping_key.into());
     let mut data_key_vec = wrapper
         .decrypt(&wrap_iv.into(), wrapped_ct)
-        .map_err(|_| FilerCryptoError::Decrypt)?;
+        .map_err(|_| FilerCryptoError::Aead)?;
 
     if data_key_vec.len() != 32 {
         data_key_vec.zeroize();
-        return Err(FilerCryptoError::Decrypt);
+        return Err(FilerCryptoError::Aead);
     }
     let mut data_key = [0u8; 32];
     data_key.copy_from_slice(&data_key_vec);
@@ -608,7 +608,7 @@ pub(crate) fn decrypt_with_key_wrapping(
     let cipher = Aes256Gcm::new(&data_key.into());
     let plaintext = cipher
         .decrypt(&blob.iv.into(), blob.ciphertext.as_slice())
-        .map_err(|_| FilerCryptoError::Decrypt);
+        .map_err(|_| FilerCryptoError::Aead);
 
     data_key.zeroize();
     plaintext
@@ -650,7 +650,7 @@ mod tests {
         let key2 = [43u8; 32];
         let blob = encrypt_with_key_wrapping(b"data", &key1).unwrap();
         let result = decrypt_with_key_wrapping(&blob, &key2);
-        assert!(matches!(result, Err(FilerCryptoError::Decrypt)));
+        assert!(matches!(result, Err(FilerCryptoError::Aead)));
     }
 
     #[test]
@@ -659,7 +659,7 @@ mod tests {
         let mut blob = encrypt_with_key_wrapping(b"data", &key).unwrap();
         blob.ciphertext[0] ^= 1;
         let result = decrypt_with_key_wrapping(&blob, &key);
-        assert!(matches!(result, Err(FilerCryptoError::Decrypt)));
+        assert!(matches!(result, Err(FilerCryptoError::Aead)));
     }
 
     #[test]
@@ -668,7 +668,7 @@ mod tests {
         let mut blob = encrypt_with_key_wrapping(b"data", &key).unwrap();
         blob.wrapped_key[15] ^= 1; // flip a bit in the wrapped-key ciphertext
         let result = decrypt_with_key_wrapping(&blob, &key);
-        assert!(matches!(result, Err(FilerCryptoError::Decrypt)));
+        assert!(matches!(result, Err(FilerCryptoError::Aead)));
     }
 
     #[test]
@@ -689,7 +689,7 @@ mod tests {
         let mut blob = encrypt_with_key_wrapping(b"data", &key).unwrap();
         blob.wrapped_key.truncate(5); // shorter than 12-byte IV
         let result = decrypt_with_key_wrapping(&blob, &key);
-        assert!(matches!(result, Err(FilerCryptoError::Decrypt)));
+        assert!(matches!(result, Err(FilerCryptoError::Aead)));
     }
 }
 ```
@@ -767,7 +767,7 @@ pub(crate) fn encrypt_field(plaintext: &[u8], key: &[u8; 32]) -> Result<Encrypte
     OsRng.fill_bytes(&mut iv);
     let ciphertext = cipher
         .encrypt(&iv.into(), plaintext)
-        .map_err(|_| FilerCryptoError::Decrypt)?;
+        .map_err(|_| FilerCryptoError::Aead)?;
     Ok(EncryptedField { ciphertext, iv })
 }
 
@@ -775,7 +775,7 @@ pub(crate) fn decrypt_field(field: &EncryptedField, key: &[u8; 32]) -> Result<Ve
     let cipher = Aes256Gcm::new(key.into());
     cipher
         .decrypt(&field.iv.into(), field.ciphertext.as_slice())
-        .map_err(|_| FilerCryptoError::Decrypt)
+        .map_err(|_| FilerCryptoError::Aead)
 }
 
 #[cfg(test)]
@@ -805,7 +805,7 @@ mod tests {
         let key2 = [8u8; 32];
         let field = encrypt_field(b"secret", &key1).unwrap();
         let result = decrypt_field(&field, &key2);
-        assert!(matches!(result, Err(FilerCryptoError::Decrypt)));
+        assert!(matches!(result, Err(FilerCryptoError::Aead)));
     }
 
     #[test]
@@ -814,7 +814,7 @@ mod tests {
         let mut field = encrypt_field(b"secret", &key).unwrap();
         field.ciphertext[0] ^= 1;
         let result = decrypt_field(&field, &key);
-        assert!(matches!(result, Err(FilerCryptoError::Decrypt)));
+        assert!(matches!(result, Err(FilerCryptoError::Aead)));
     }
 
     #[test]
@@ -1340,7 +1340,7 @@ Empty namespace — Task 10 populates it.
 
 - [ ] **Step 7: Verify the binding crate builds**
 
-Run: `cd /Users/corvid/Projects/filer-crypto && cargo build -p filer-crypto-uniffi`
+Run: `cargo build -p filer-crypto-uniffi`
 Expected: exits 0. The build will compile uniffi's proc macros and call the build script.
 
 - [ ] **Step 8: Verify the uniffi-bindgen binary builds**
