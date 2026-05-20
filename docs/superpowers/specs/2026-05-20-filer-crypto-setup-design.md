@@ -20,7 +20,7 @@ This spec covers **the crate's structure, public API shape, and Swift Package wi
   - AES-256-GCM blob encryption with per-blob random data keys wrapped by the master key
   - Field-level metadata encryption with the same envelope
   - HKDF-SHA256 key derivation from the master secret to subkeys
-  - BIP39 12-word recovery phrase ↔ 32-byte master secret
+  - BIP39 24-word recovery phrase ↔ 32-byte master secret (24 words encode 256 bits — matches the 256-bit security baseline used elsewhere in the envelope)
   - Ed25519 device challenge-response signing
 - UniFFI 0.28 binding crate (`cdylib` + `staticlib`) with a `.udl` interface
 - `Package.swift` at repo root declaring a source-Swift target wrapping the generated bindings
@@ -116,8 +116,10 @@ Methods:
 ### 4.3 Stateless modules for things that need no key
 
 `recovery::generate_master_secret() -> [u8; 32]` — system random
-`recovery::secret_to_phrase(secret: &[u8; 32]) -> Result<String>` — BIP39 12-word
+`recovery::secret_to_phrase(secret: &[u8; 32]) -> Result<String>` — BIP39 24-word
 `recovery::phrase_to_secret(phrase: &str) -> Result<[u8; 32]>` — inverse
+
+Note: this differs from the parent DESIGN.md §4.2 (which still says "12-word"). 12 words encodes 128 bits of entropy; the master secret here is 256 bits, requiring 24 words. The parent DESIGN.md should be updated to match when feature work begins on the mobile recovery flow.
 
 These take no `Vault` and own no state, but live in the same crate.
 
