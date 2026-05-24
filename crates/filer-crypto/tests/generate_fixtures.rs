@@ -21,7 +21,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use filer_crypto::{recovery, verify_signature, Vault};
+use filer_crypto::{Vault, recovery, verify_signature};
 use serde::Serialize;
 
 const FIXTURE_MASTER_SECRET: [u8; 32] = [0u8; 32];
