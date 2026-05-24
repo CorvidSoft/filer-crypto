@@ -21,8 +21,8 @@
 // dance). The filer-crypto-uniffi crate declares both crate-types,
 // so build.sh produces both.
 
-import PackageDescription
 import Foundation
+import PackageDescription
 
 let local = ProcessInfo.processInfo.environment["FILER_CRYPTO_LOCAL"] == "1"
 let localProfile = ProcessInfo.processInfo.environment["FILER_CRYPTO_LOCAL_PROFILE"] ?? "debug"
@@ -41,10 +41,11 @@ let localSwiftSettings: [SwiftSetting] = [
         // Use -Ipath (no space) so SPM can't inject flags between -I and the path
         // when composing the FilerCryptoPackageTests runner command (Swift 6.3+ issue).
         "-I\(pkgRoot)/Sources/FilerCrypto",
-    ]),
+    ])
 ]
 
-let targets: [Target] = local
+let targets: [Target] =
+    local
     ? [
         .target(
             name: "FilerCrypto",
@@ -73,8 +74,9 @@ let targets: [Target] = local
             // and the release procedure. The literal <X.Y.Z> here will fail to
             // download if anyone runs `swift build` without FILER_CRYPTO_LOCAL=1
             // before the first release is cut; that's expected.
-            url: "https://github.com/CorvidSoft/filer-crypto/releases/download/v<X.Y.Z>/FilerCryptoFFI.xcframework.zip",
-            checksum: "0000000000000000000000000000000000000000000000000000000000000000"
+            url:
+                "https://github.com/CorvidSoft/filer-crypto/releases/download/v0.0.2-rc1/FilerCryptoFFI.xcframework.zip",
+            checksum: "bfc4bc203a9b2afa8d989b754abb69532aa0939b7735c519ed8698e1298d7377"
         ),
         .target(
             name: "FilerCrypto",
@@ -100,7 +102,7 @@ let package = Package(
         .library(
             name: "FilerCrypto",
             targets: ["FilerCrypto"]
-        ),
+        )
     ],
     targets: targets
 )
