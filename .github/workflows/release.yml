@@ -40,6 +40,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Verify workflow was dispatched from main
+        run: |
+          if [ "${{ github.ref_type }}" != "branch" ] || [ "${{ github.ref_name }}" != "main" ]; then
+              echo "::error::Release workflow must be dispatched from the 'main' branch (ref_type=${{ github.ref_type }}, ref_name=${{ github.ref_name }})."
+              exit 1
+          fi
+
       - name: Verify input version matches Cargo.toml
         run: |
           requested="${{ inputs.version }}"
@@ -52,8 +59,15 @@ jobs:
 
       - name: Verify tag does not already exist
         run: |
-          if git rev-parse "v${{ inputs.version }}" >/dev/null 2>&1; then
-              echo "::error::Tag v${{ inputs.version }} already exists. Pick a new version."
+          # Use --verify with the full refs/tags/ path so a branch
+          # accidentally named v<X.Y.Z> doesn't trigger a false positive.
+          if git rev-parse --verify --quiet "refs/tags/v${{ inputs.version }}" >/dev/null; then
+              echo "::error::Tag v${{ inputs.version }} already exists locally. Pick a new version."
+              exit 1
+          fi
+          # Also check the remote in case the local clone is missing the tag.
+          if git ls-remote --tags --exit-code origin "refs/tags/v${{ inputs.version }}" >/dev/null 2>&1; then
+              echo "::error::Tag v${{ inputs.version }} already exists on origin. Pick a new version."
               exit 1
           fi
 
@@ -103,13 +117,19 @@ jobs:
           Pins Package.swift to the XCFramework artifact built in this run."
           git tag "v$version"
           # Push the commit and tag together. The tag points at the commit
-          # whose Package.swift has the matching checksum.
-          git push origin "HEAD:${{ github.ref_name }}"
+          # whose Package.swift has the matching checksum. The main-branch
+          # guard at the top of the job ensures HEAD is at main.
+          git push origin HEAD:main
           git push origin "v$version"
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # release-notes.sh reads $GITHUB_REF_NAME to construct the
+          # release URL. On workflow_dispatch, the default value is the
+          # branch name ('main') — override it to the tag we just created
+          # so the script emits the correct .binaryTarget snippet.
+          GITHUB_REF_NAME: "v${{ inputs.version }}"
         run: |
           version="${{ inputs.version }}"
           gh release create "v$version" \

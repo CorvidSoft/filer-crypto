@@ -92,12 +92,16 @@ entirely.
 
 ### If the workflow fails partway through
 
-| Failed at | State left | Recovery |
+The workflow runner is ephemeral, so only state pushed to `origin`
+persists. The recovery table describes the **remote** state after each
+failure point.
+
+| Failed at | Remote state | Recovery |
 |---|---|---|
-| Build / checksum | No commit, no tag, no release | Re-run the workflow |
-| `git push` (commit) | Possibly a stray local commit on the runner | Re-run; idempotent |
-| `git push` (tag) | Main has the pinned commit but no tag | Manually `git tag` + `git push` on the right commit, or revert the commit and re-run |
-| `gh release create` | Tag exists, no release | Manually `gh release create v<X.Y.Z> build/...zip --notes ...` |
+| Build / checksum | No commit, no tag, no release published | Re-run the workflow |
+| `git push origin HEAD:main` | No commit, no tag, no release published | Re-run; idempotent |
+| `git push origin v<X.Y.Z>` | Pin commit on `main`, no tag, no release | Manually `git tag v<X.Y.Z> <pin-commit-sha>` and `git push origin v<X.Y.Z>`, then `gh release create v<X.Y.Z> --notes ...` with the artifact rebuilt locally, OR revert the pin commit and re-run the workflow |
+| `gh release create` | Pin commit on `main`, tag exists, no release | Manually `gh release create v<X.Y.Z> build/...zip --notes "$(./scripts/release-notes.sh <sha256>)"` with a locally rebuilt artifact |
 
 Branch-protection caveat: if `main` requires PR review, the workflow's
 direct push will fail. Either configure the GitHub Actions bot to
