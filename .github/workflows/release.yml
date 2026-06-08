@@ -77,12 +77,22 @@ jobs:
       - name: Build XCFramework
         run: ./scripts/build-xcframework.sh
 
-      - name: Compute checksum
+      - name: Compute checksums
         id: sum
         run: |
           sha=$(shasum -a 256 build/FilerCryptoFFI.xcframework.zip | awk '{print $1}')
           echo "sha256=$sha" >> "$GITHUB_OUTPUT"
-          echo "Computed sha256: $sha"
+          echo "Computed XCFramework sha256: $sha"
+          # FilerCrypto.swift is the generated high-level Swift API. It is
+          # published as a standalone asset so the iOS app's config plugin
+          # (which downloads release assets directly rather than checking out
+          # this repo via SPM) can pick it up — the XCFramework only carries
+          # the compiled lib + C header/modulemap, not this wrapper.
+          # build-xcframework.sh already proved (via its bindings-drift check)
+          # that this committed file matches the XCFramework built in this run.
+          swift_sha=$(shasum -a 256 Sources/FilerCrypto/FilerCrypto.swift | awk '{print $1}')
+          echo "swift_sha256=$swift_sha" >> "$GITHUB_OUTPUT"
+          echo "Computed FilerCrypto.swift sha256: $swift_sha"
 
       - name: Pin Package.swift to this build's URL + checksum
         run: |
@@ -134,5 +144,6 @@ jobs:
           version="${{ inputs.version }}"
           gh release create "v$version" \
               build/FilerCryptoFFI.xcframework.zip \
+              Sources/FilerCrypto/FilerCrypto.swift \
               --title "v$version" \
-              --notes "$(./scripts/release-notes.sh ${{ steps.sum.outputs.sha256 }})"
+              --notes "$(./scripts/release-notes.sh ${{ steps.sum.outputs.sha256 }} ${{ steps.sum.outputs.swift_sha256 }})"

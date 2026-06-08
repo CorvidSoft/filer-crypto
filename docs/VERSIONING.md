@@ -100,8 +100,8 @@ failure point.
 |---|---|---|
 | Build / checksum | No commit, no tag, no release published | Re-run the workflow |
 | `git push origin HEAD:main` | No commit, no tag, no release published | Re-run; idempotent |
-| `git push origin v<X.Y.Z>` | Pin commit on `main`, no tag, no release | Manually `git tag v<X.Y.Z> <pin-commit-sha>` and `git push origin v<X.Y.Z>`, then `gh release create v<X.Y.Z> --notes ...` with the artifact rebuilt locally, OR revert the pin commit and re-run the workflow |
-| `gh release create` | Pin commit on `main`, tag exists, no release | Manually `gh release create v<X.Y.Z> build/...zip --notes "$(./scripts/release-notes.sh <sha256>)"` with a locally rebuilt artifact |
+| `git push origin v<X.Y.Z>` | Pin commit on `main`, no tag, no release | Manually `git tag v<X.Y.Z> <pin-commit-sha>` and `git push origin v<X.Y.Z>`, then `gh release create v<X.Y.Z> --notes ...` with the artifacts (XCFramework + `FilerCrypto.swift`) rebuilt locally, OR revert the pin commit and re-run the workflow |
+| `gh release create` | Pin commit on `main`, tag exists, no release | Manually `gh release create v<X.Y.Z> build/FilerCryptoFFI.xcframework.zip Sources/FilerCrypto/FilerCrypto.swift --notes "$(./scripts/release-notes.sh <xcframework-sha256> <filercrypto-swift-sha256>)"` with a locally rebuilt artifact (compute the swift sha via `shasum -a 256 Sources/FilerCrypto/FilerCrypto.swift`) |
 
 Branch-protection caveat: if `main` requires PR review, the workflow's
 direct push will fail. Either configure the GitHub Actions bot to
