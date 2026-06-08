@@ -16,7 +16,9 @@ pub mod recovery;
 mod vault;
 
 pub use auth::{DeviceSignature, verify_signature};
-pub use blob::EncryptedBlob;
+pub use blob::{
+    CHUNK_SIZE, decrypt_chunked, decrypt_file_chunked, encrypt_chunked, encrypt_file_chunked,
+};
 pub use error::{FilerCryptoError, Result};
 pub use metadata::EncryptedField;
 pub use vault::Vault;
