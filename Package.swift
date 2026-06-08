@@ -75,8 +75,8 @@ let targets: [Target] =
             // download if anyone runs `swift build` without FILER_CRYPTO_LOCAL=1
             // before the first release is cut; that's expected.
             url:
-                "https://github.com/CorvidSoft/filer-crypto/releases/download/v0.2.0/FilerCryptoFFI.xcframework.zip",
-            checksum: "3599298895454e8131394306f5ae4f556d16aa49874b5c649f0c9bedaa511579"
+                "https://github.com/CorvidSoft/filer-crypto/releases/download/v0.3.0/FilerCryptoFFI.xcframework.zip",
+            checksum: "ee846a2346b8ee32325ee46d288925331f855be36a7c128a06bc33a86d0e3888"
         ),
         .target(
             name: "FilerCrypto",
